@@ -5,7 +5,7 @@
 
 import express from 'express';
 import cors from 'cors';
-import { getBotState, setBotEnabled } from './whatsapp/client.js';
+import { getBotState, setBotEnabled } from '../whatsapp/client.js';
 
 const app = express();
 const PORT = process.env.API_PORT || 3001;
@@ -36,9 +36,9 @@ app.get('/api/qr', (req, res) => {
     if (state.qrCode) {
         res.json({ qrCode: state.qrCode });
     } else {
-        res.json({ 
-            status: state.status, 
-            message: state.status === 'connected' ? 'Already connected' : 'No QR code available' 
+        res.json({
+            status: state.status,
+            message: state.status === 'connected' ? 'Already connected' : 'No QR code available'
         });
     }
 });
@@ -94,9 +94,9 @@ app.get('/api/bots/:id/qr', (req, res) => {
     if (state.qrCode) {
         res.json({ qrCode: state.qrCode });
     } else {
-        res.json({ 
-            status: state.status, 
-            message: 'No QR code available' 
+        res.json({
+            status: state.status,
+            message: 'No QR code available'
         });
     }
 });
