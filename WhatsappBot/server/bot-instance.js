@@ -187,6 +187,7 @@ export class BotInstance {
 
     /**
      * Traitement des messages
+     * Supports activation modes: onReceive and onSend
      */
     async handleMessage(msg) {
         const msgId = msg.key.id;
@@ -199,70 +200,142 @@ export class BotInstance {
             oldest.forEach(id => this.processedMessages.delete(id));
         }
 
-        const sender = msg.key.remoteJid;
-        const isGroup = sender.endsWith('@g.us');
+        const remoteJid = msg.key.remoteJid;
+        const isGroup = remoteJid.endsWith('@g.us');
 
-        // Ignore groups
+        // ❌ NEVER process groups
         if (isGroup) return;
 
-        // Detect message type
         const message = msg.message;
         if (!message) return;
+
+        // Direction detection
+        const isFromMe = msg.key.fromMe === true;
+        const isIncoming = !isFromMe;
+        const isOutgoing = isFromMe;
+
+        // Number extraction
+        const remoteNumber = remoteJid.split('@')[0];
+        const myNumber = this.phoneNumber;
+
+        // Self-message detection (message to oneself)
+        const isSelfMessage = isFromMe && myNumber && remoteNumber === myNumber;
 
         // Get text for command checking
         const text = message.conversation || message.extendedTextMessage?.text || '';
         const lower = text.toLowerCase().trim();
 
-        // Check if sender is owner
-        // - fromMe = message sent by same WhatsApp account (self-message)
-        // - OR sender number matches bot number
-        const senderNumber = sender.split('@')[0];
-        const isFromMe = msg.key.fromMe === true;
-        const isOwner = isFromMe || (this.phoneNumber && senderNumber === this.phoneNumber);
-
-        // Admin commands (work even when disabled)
-        if (lower === 'bot on') {
-            if (isOwner || !this.enabled) { // Allow if owner or bot is disabled
-                this.setEnabled(true, sender);
+        // ============================================================
+        // BOT COMMANDS - ONLY via self-message
+        // ============================================================
+        if (isSelfMessage) {
+            if (lower === 'bot on') {
+                this.setEnabled(true, remoteJid);
+                return;
             }
-            return;
-        }
-
-        if (lower === 'bot off') {
-            if (isOwner) {
-                this.setEnabled(false, sender);
-            } else {
-                await this.sendMessage(sender, '❌ Seul le propriétaire peut désactiver le bot.');
+            if (lower === 'bot off') {
+                this.setEnabled(false, remoteJid);
+                return;
             }
-            return;
+            if (lower === 'bot status') {
+                const statusMsg = this.enabled ? '✅ Actif' : '⛔ Désactivé';
+                const modes = [];
+                if (this.config.activateOnReceive) modes.push('📥 Réception');
+                if (this.config.activateOnSend) modes.push('📤 Envoi');
+                await this.sendMessage(remoteJid,
+                    `🤖 *Statut:* ${statusMsg}\n` +
+                    `📋 *Modes:* ${modes.length > 0 ? modes.join(', ') : 'Aucun'}`
+                );
+                return;
+            }
         }
 
-        if (lower === 'bot status') {
-            const status = this.enabled ? '✅ Actif' : '⛔ Désactivé';
-            await this.sendMessage(sender, `🤖 *Statut du bot:* ${status}`);
-            return;
-        }
-
-        // If disabled, don't process other messages
+        // If disabled, don't process anything else
         if (!this.enabled) return;
 
-        try {
-            if (message.audioMessage) {
-                await this.handleAudioMessage(msg, sender);
-            } else if (message.conversation || message.extendedTextMessage) {
-                await this.handleTextMessage(msg, sender, text);
+        // ============================================================
+        // AUDIO PROCESSING
+        // ============================================================
+        if (message.audioMessage) {
+            // Get activation config (with defaults for backwards compatibility)
+            const activateOnReceive = this.config.activateOnReceive ?? true;
+            const activateOnSend = this.config.activateOnSend ?? false;
+            const receiveFromNumbers = this.config.receiveFromNumbers || [];
+            const sendToNumbers = this.config.sendToNumbers || [];
+
+            let shouldProcess = false;
+
+            // Check INCOMING audio (received from someone)
+            if (isIncoming && activateOnReceive) {
+                if (receiveFromNumbers.length === 0) {
+                    // Accept from anyone
+                    shouldProcess = true;
+                } else {
+                    // Accept only from specific numbers
+                    const normalizedRemote = this.normalizeNumber(remoteNumber);
+                    shouldProcess = receiveFromNumbers.some(n =>
+                        this.normalizeNumber(n) === normalizedRemote
+                    );
+                }
             }
-        } catch (error) {
-            console.error(`[${this.botId}] Message error:`, error.message);
-            await this.sendMessage(sender, '❌ Une erreur s\'est produite.');
+
+            // Check OUTGOING audio (sent by me)
+            if (isOutgoing && activateOnSend && !isSelfMessage) {
+                if (sendToNumbers.length === 0) {
+                    // Process for any recipient
+                    shouldProcess = true;
+                } else {
+                    // Process only for specific recipients
+                    const normalizedRemote = this.normalizeNumber(remoteNumber);
+                    shouldProcess = sendToNumbers.some(n =>
+                        this.normalizeNumber(n) === normalizedRemote
+                    );
+                }
+            }
+
+            if (shouldProcess) {
+                try {
+                    await this.handleAudioMessage(msg, remoteJid, isOutgoing);
+                } catch (error) {
+                    console.error(`[${this.botId}] Audio error:`, error.message);
+                    if (!isOutgoing) {
+                        await this.sendMessage(remoteJid, '❌ Erreur de traitement audio.');
+                    }
+                }
+            }
+            return;
+        }
+
+        // ============================================================
+        // TEXT MESSAGES (only for incoming, response logic)
+        // ============================================================
+        if (isIncoming && (message.conversation || message.extendedTextMessage)) {
+            try {
+                await this.handleTextMessage(msg, remoteJid, text);
+            } catch (error) {
+                console.error(`[${this.botId}] Text error:`, error.message);
+                await this.sendMessage(remoteJid, '❌ Une erreur s\'est produite.');
+            }
         }
     }
 
     /**
-     * Traitement message audio
+     * Normalize phone number (remove +, spaces, etc.)
      */
-    async handleAudioMessage(msg, sender) {
-        console.log(`[${this.botId}] Audio from ${sender.split('@')[0]}`);
+    normalizeNumber(num) {
+        return String(num).replace(/[^0-9]/g, '');
+    }
+
+    /**
+     * Traitement message audio
+     * @param {object} msg - Message object
+     * @param {string} remoteJid - Remote JID (sender or recipient)
+     * @param {boolean} isOutgoing - True if this is a message sent by us
+     */
+    async handleAudioMessage(msg, remoteJid, isOutgoing = false) {
+        const direction = isOutgoing ? 'TO' : 'FROM';
+        const number = remoteJid.split('@')[0];
+        console.log(`[${this.botId}] Audio ${direction} ${number}`);
 
         const buffer = await downloadMediaMessage(msg, 'buffer', {});
         const audioPath = path.join(this.tempPath, `audio_${Date.now()}.ogg`);
@@ -273,33 +346,39 @@ export class BotInstance {
             const transcription = await transcribeAudio(audioPath, this.config.settings?.groqApiKey);
 
             if (!transcription || transcription.trim().length < 3) {
-                await this.sendMessage(sender, '⚠️ Message non compris. Réessayez.');
+                // For outgoing, send to self. For incoming, reply to sender.
+                const replyTo = isOutgoing ? `${this.phoneNumber}@s.whatsapp.net` : remoteJid;
+                await this.sendMessage(replyTo, '⚠️ Message non compris. Réessayez.');
                 return;
             }
 
             // Analyze with AI
-            const senderNumber = sender.split('@')[0];
+            const contextNumber = number;
             const result = await analyzeMessage(
                 transcription,
-                this.pendingOrders.get(senderNumber),
+                this.pendingOrders.get(contextNumber),
                 this.config
             );
 
             // Build response
-            let response = `📝 *Transcription:*\n"${transcription.trim()}"`;
+            const prefix = isOutgoing ? `📤 *Envoyé à ${number}*\n` : '';
+            let response = `${prefix}📝 *Transcription:*\n"${transcription.trim()}"`;
             if (result.aiMessage) {
                 response += `\n\n${result.aiMessage}`;
             }
-            await this.sendMessage(sender, response);
+
+            // For outgoing messages, send response to self
+            const replyTo = isOutgoing ? `${this.phoneNumber}@s.whatsapp.net` : remoteJid;
+            await this.sendMessage(replyTo, response);
 
             // Handle result
             if (result.status === 'pending_confirmation') {
-                this.pendingOrders.set(senderNumber, result.data);
+                this.pendingOrders.set(contextNumber, result.data);
             } else if (result.status === 'confirmed') {
-                await this.generateInvoice(sender, result.data, transcription);
-                this.pendingOrders.delete(senderNumber);
+                await this.generateInvoice(replyTo, result.data, transcription);
+                this.pendingOrders.delete(contextNumber);
             } else if (result.status === 'cancelled') {
-                this.pendingOrders.delete(senderNumber);
+                this.pendingOrders.delete(contextNumber);
             }
 
         } finally {

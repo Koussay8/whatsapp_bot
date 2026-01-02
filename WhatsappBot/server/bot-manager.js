@@ -111,7 +111,12 @@ Sois professionnel et amical.`,
             knowledge = [],
             welcomeMessage = '',
             language = 'fr',
-            ownerEmail = null,  // Email du propriétaire du bot
+            ownerEmail = null,
+            // Activation modes
+            activateOnReceive = true,
+            activateOnSend = false,
+            receiveFromNumbers = [],
+            sendToNumbers = [],
         } = options;
 
         // Create directories
@@ -128,12 +133,17 @@ Sois professionnel et amical.`,
             id: botId,
             name: name || `Bot ${this.bots.size + 1}`,
             botType: botType,
-            ownerEmail: ownerEmail,  // Track who created the bot
+            ownerEmail: ownerEmail,
             status: 'created',
             enabled: false,
             autoStart: false,
             language: language,
             welcomeMessage: welcomeMessage,
+            // Activation modes
+            activateOnReceive: activateOnReceive,
+            activateOnSend: activateOnSend,
+            receiveFromNumbers: Array.isArray(receiveFromNumbers) ? receiveFromNumbers : [],
+            sendToNumbers: Array.isArray(sendToNumbers) ? sendToNumbers : [],
             createdAt: new Date().toISOString(),
             settings: {
                 groqApiKey: settings.groqApiKey || process.env.GROQ_API_KEY_DEFAULT || '',
