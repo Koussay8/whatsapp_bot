@@ -111,6 +111,7 @@ Sois professionnel et amical.`,
             knowledge = [],
             welcomeMessage = '',
             language = 'fr',
+            ownerEmail = null,  // Email du propriétaire du bot
         } = options;
 
         // Create directories
@@ -127,6 +128,7 @@ Sois professionnel et amical.`,
             id: botId,
             name: name || `Bot ${this.bots.size + 1}`,
             botType: botType,
+            ownerEmail: ownerEmail,  // Track who created the bot
             status: 'created',
             enabled: false,
             autoStart: false,
@@ -278,10 +280,29 @@ Sois professionnel et amical.`,
     }
 
     /**
-     * Liste tous les bots
+     * Liste tous les bots (avec option de filtrer par owner)
      */
-    listBots() {
-        return Array.from(this.bots.values()).map(bot => bot.getStatus());
+    listBots(ownerEmail = null) {
+        let bots = Array.from(this.bots.values());
+
+        if (ownerEmail) {
+            bots = bots.filter(bot => bot.config.ownerEmail === ownerEmail);
+        }
+
+        return bots.map(bot => ({
+            ...bot.getStatus(),
+            ownerEmail: bot.config.ownerEmail || null,
+            botType: bot.config.botType || 'invoice',
+        }));
+    }
+
+    /**
+     * Compter les bots d'un owner
+     */
+    countBotsByOwner(ownerEmail) {
+        return Array.from(this.bots.values())
+            .filter(bot => bot.config.ownerEmail === ownerEmail)
+            .length;
     }
 
     /**

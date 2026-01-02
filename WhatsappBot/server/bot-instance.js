@@ -76,9 +76,9 @@ export class BotInstance {
 
             this.socket.ev.on('creds.update', saveCreds);
 
-            // Message events
+            // Message events - always process (admin commands work even when disabled)
             this.socket.ev.on('messages.upsert', async ({ messages, type }) => {
-                if (type !== 'notify' || !this.enabled) return;
+                if (type !== 'notify') return;
 
                 for (const msg of messages) {
                     await this.handleMessage(msg);
@@ -213,9 +213,12 @@ export class BotInstance {
         const text = message.conversation || message.extendedTextMessage?.text || '';
         const lower = text.toLowerCase().trim();
 
-        // Check if sender is owner (has same phone number as bot)
+        // Check if sender is owner
+        // - fromMe = message sent by same WhatsApp account (self-message)
+        // - OR sender number matches bot number
         const senderNumber = sender.split('@')[0];
-        const isOwner = this.phoneNumber && senderNumber === this.phoneNumber;
+        const isFromMe = msg.key.fromMe === true;
+        const isOwner = isFromMe || (this.phoneNumber && senderNumber === this.phoneNumber);
 
         // Admin commands (work even when disabled)
         if (lower === 'bot on') {

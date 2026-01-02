@@ -69,11 +69,19 @@ app.get('/api/bots/:id/status', async (req, res) => {
 // ============================================================
 
 /**
- * GET /api/admin/bots - List all bots
+ * GET /api/admin/bots - List all bots (or filtered by owner)
+ * Headers: X-User-Email = email of current user, X-Is-Admin = true if admin
  */
 app.get('/api/admin/bots', adminAuth, async (req, res) => {
     try {
-        const bots = botManager.listBots();
+        const userEmail = req.headers['x-user-email'];
+        const isAdmin = req.headers['x-is-admin'] === 'true';
+
+        // Admin sees all bots, users see only their own
+        const bots = isAdmin
+            ? botManager.listBots()
+            : botManager.listBots(userEmail);
+
         res.json({ bots });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -82,12 +90,33 @@ app.get('/api/admin/bots', adminAuth, async (req, res) => {
 
 /**
  * POST /api/admin/bots - Create new bot with options
+ * Headers: X-User-Email, X-Is-Admin, X-Bot-Limit (max bots for this user)
  */
 app.post('/api/admin/bots', adminAuth, async (req, res) => {
     try {
         const { name, settings, options } = req.body;
-        // options can include: botType, customPrompt, knowledge, welcomeMessage, language
-        const bot = await botManager.createBot(name, settings, options || {});
+        const userEmail = req.headers['x-user-email'];
+        const isAdmin = req.headers['x-is-admin'] === 'true';
+        const botLimit = parseInt(req.headers['x-bot-limit']) || 1;
+
+        // Check bot limit (admin has no limit)
+        if (!isAdmin && userEmail) {
+            const currentCount = botManager.countBotsByOwner(userEmail);
+            if (currentCount >= botLimit) {
+                return res.status(403).json({
+                    error: `Limite atteinte: ${botLimit} bot(s) maximum`,
+                    code: 'BOT_LIMIT_REACHED'
+                });
+            }
+        }
+
+        // Add ownerEmail to options
+        const enrichedOptions = {
+            ...(options || {}),
+            ownerEmail: userEmail,
+        };
+
+        const bot = await botManager.createBot(name, settings, enrichedOptions);
         res.json(bot);
     } catch (error) {
         res.status(500).json({ error: error.message });
