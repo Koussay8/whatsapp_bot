@@ -144,11 +144,23 @@ app.post('/api/admin/bots/:id/start', adminAuth, async (req, res) => {
 });
 
 /**
- * POST /api/admin/bots/:id/stop - Stop bot
+ * POST /api/admin/bots/:id/stop - Stop bot (preserves session)
  */
 app.post('/api/admin/bots/:id/stop', adminAuth, async (req, res) => {
     try {
         const status = await botManager.stopBot(req.params.id);
+        res.json(status);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * POST /api/admin/bots/:id/logout - Logout bot (clears session)
+ */
+app.post('/api/admin/bots/:id/logout', adminAuth, async (req, res) => {
+    try {
+        const status = await botManager.logoutBot(req.params.id);
         res.json(status);
     } catch (error) {
         res.status(500).json({ error: error.message });

@@ -93,28 +93,58 @@ export class BotInstance {
     }
 
     /**
-     * Arrêter le bot
+     * Arrêter le bot (sans déconnexion de WhatsApp)
      */
     async stop() {
+        if (this.socket) {
+            try {
+                // Ferme la connexion sans logout (garde la session)
+                this.socket.end(new Error('Manual stop'));
+            } catch (e) { }
+            this.socket = null;
+        }
+        this.status = 'disconnected';
+        this.qrCode = null;
+        console.log(`[${this.botId}] Stopped (session preserved)`);
+    }
+
+    /**
+     * Déconnexion complète (efface la session)
+     */
+    async logout() {
         if (this.socket) {
             try {
                 await this.socket.logout();
             } catch (e) { }
             this.socket = null;
         }
-        this.status = 'disconnected';
+        // Clear session files
+        if (fs.existsSync(this.authPath)) {
+            fs.rmSync(this.authPath, { recursive: true, force: true });
+            fs.mkdirSync(this.authPath, { recursive: true });
+        }
+        this.status = 'logged_out';
         this.qrCode = null;
-        console.log(`[${this.botId}] Stopped`);
+        this.phoneNumber = null;
+        console.log(`[${this.botId}] Logged out (session cleared)`);
     }
 
     /**
      * Activer/Désactiver le traitement des messages
      */
-    setEnabled(enabled) {
+    setEnabled(enabled, notifySender = null) {
         this.enabled = enabled;
         this.config.enabled = enabled;
         this.saveConfig();
         console.log(`[${this.botId}] ${enabled ? 'Enabled' : 'Disabled'}`);
+
+        // Envoyer confirmation si demandé
+        if (notifySender && this.socket) {
+            const msg = enabled
+                ? '✅ *Bot activé!* Je répondrai maintenant aux messages.'
+                : '⛔ *Bot désactivé!* Je ne répondrai plus aux messages (sauf commandes admin).';
+            this.sendMessage(notifySender, msg);
+        }
     }
 
     /**
@@ -179,11 +209,44 @@ export class BotInstance {
         const message = msg.message;
         if (!message) return;
 
+        // Get text for command checking
+        const text = message.conversation || message.extendedTextMessage?.text || '';
+        const lower = text.toLowerCase().trim();
+
+        // Check if sender is owner (has same phone number as bot)
+        const senderNumber = sender.split('@')[0];
+        const isOwner = this.phoneNumber && senderNumber === this.phoneNumber;
+
+        // Admin commands (work even when disabled)
+        if (lower === 'bot on') {
+            if (isOwner || !this.enabled) { // Allow if owner or bot is disabled
+                this.setEnabled(true, sender);
+            }
+            return;
+        }
+
+        if (lower === 'bot off') {
+            if (isOwner) {
+                this.setEnabled(false, sender);
+            } else {
+                await this.sendMessage(sender, '❌ Seul le propriétaire peut désactiver le bot.');
+            }
+            return;
+        }
+
+        if (lower === 'bot status') {
+            const status = this.enabled ? '✅ Actif' : '⛔ Désactivé';
+            await this.sendMessage(sender, `🤖 *Statut du bot:* ${status}`);
+            return;
+        }
+
+        // If disabled, don't process other messages
+        if (!this.enabled) return;
+
         try {
             if (message.audioMessage) {
                 await this.handleAudioMessage(msg, sender);
             } else if (message.conversation || message.extendedTextMessage) {
-                const text = message.conversation || message.extendedTextMessage?.text;
                 await this.handleTextMessage(msg, sender, text);
             }
         } catch (error) {

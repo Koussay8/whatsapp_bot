@@ -210,13 +210,24 @@ Sois professionnel et amical.`,
     }
 
     /**
-     * Arrêter un bot
+     * Arrêter un bot (préserve la session)
      */
     async stopBot(botId) {
         const bot = this.bots.get(botId);
         if (!bot) throw new Error(`Bot ${botId} not found`);
 
         await bot.stop();
+        return bot.getStatus();
+    }
+
+    /**
+     * Déconnecter complètement un bot (efface la session)
+     */
+    async logoutBot(botId) {
+        const bot = this.bots.get(botId);
+        if (!bot) throw new Error(`Bot ${botId} not found`);
+
+        await bot.logout();
         return bot.getStatus();
     }
 
