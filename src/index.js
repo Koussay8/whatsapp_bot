@@ -17,6 +17,7 @@ import { transcribeAudio } from './transcription/whisper.js';
 import { analyzeTranscription, hasPendingOrder, cancelPendingOrder } from './invoice/parser.js';
 import { generateInvoicePDF } from './invoice/generator.js';
 import { sendInvoiceEmail, sendConfirmationEmail, verifyEmailConfig, isEmailConfigured } from './email/sender.js';
+import { startAPIServer } from './api/server.js';
 
 if (!process.env.GROQ_API_KEY) {
     console.error('❌ GROQ_API_KEY manquante');
@@ -228,7 +229,10 @@ async function handleError({ sender, socket }) {
 async function main() {
     if (isEmailConfigured()) await verifyEmailConfig();
 
-    console.log('📱 Démarrage...\n');
+    // Start API server for external access (Vercel)
+    startAPIServer();
+
+    console.log('📱 Démarrage WhatsApp...\n');
 
     try {
         await createWhatsAppClient({

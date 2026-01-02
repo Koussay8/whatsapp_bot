@@ -11,7 +11,8 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
-import qrcode from 'qrcode-terminal';
+import qrcodeTerminal from 'qrcode-terminal';
+import QRCode from 'qrcode';
 import fs from 'fs';
 import path from 'path';
 
@@ -45,13 +46,29 @@ function saveBotConfig(config) {
 
 let botConfig = loadBotConfig();
 
+// State for API
+const botState = {
+  status: 'disconnected',
+  qrCode: null,
+  phoneNumber: null,
+  enabled: botConfig.enabled,
+};
+
+export function getBotState() {
+  return {
+    ...botState,
+    enabled: botConfig.enabled,
+  };
+}
+
 export function isBotEnabled() {
   return botConfig.enabled;
 }
 
 export function setBotEnabled(enabled) {
   botConfig.enabled = enabled;
-  botConfig.initialized = true; // Marquer comme initialisé
+  botConfig.initialized = true;
+  botState.enabled = enabled;
   saveBotConfig(botConfig);
 }
 
@@ -130,12 +147,22 @@ export async function createWhatsAppClient(handlers) {
 
     if (qr) {
       reconnectCount = 0; // Reset sur nouveau QR
+      botState.status = 'waiting_qr';
+
+      // Generate QR for terminal
       console.log('\n' + '='.repeat(50));
       console.log('📱 SCANNEZ CE QR CODE AVEC WHATSAPP:');
       console.log('='.repeat(50));
-      qrcode.generate(qr, { small: true });
+      qrcodeTerminal.generate(qr, { small: true });
       console.log('WhatsApp > Paramètres > Appareils connectés');
       console.log('='.repeat(50) + '\n');
+
+      // Generate QR as data URL for API
+      try {
+        botState.qrCode = await QRCode.toDataURL(qr);
+      } catch (e) {
+        console.error('QR generation error:', e.message);
+      }
     }
 
     if (connection === 'close') {
@@ -169,6 +196,11 @@ export async function createWhatsAppClient(handlers) {
     } else if (connection === 'open') {
       reconnectCount = 0; // Reset sur connexion réussie
       ownerNumber = sock.user?.id?.split(':')[0] || sock.user?.id?.split('@')[0];
+
+      // Update state
+      botState.status = 'connected';
+      botState.qrCode = null;
+      botState.phoneNumber = ownerNumber;
 
       // Afficher statut
       const status = isBotEnabled() ? '✅ ACTIVÉ' : '❌ DÉSACTIVÉ';
