@@ -251,17 +251,24 @@ export class BotInstance {
         }
 
         // If disabled, don't process anything else
-        if (!this.enabled) return;
+        if (!this.enabled) {
+            console.log(`[${this.botId}] Bot disabled, ignoring message`);
+            return;
+        }
 
         // ============================================================
         // AUDIO PROCESSING
         // ============================================================
         if (message.audioMessage) {
+            console.log(`[${this.botId}] Audio detected - fromMe:${isFromMe}, remote:${remoteNumber}, myNumber:${myNumber}`);
+
             // Get activation config (with defaults for backwards compatibility)
             const activateOnReceive = this.config.activateOnReceive ?? true;
             const activateOnSend = this.config.activateOnSend ?? false;
             const receiveFromNumbers = this.config.receiveFromNumbers || [];
             const sendToNumbers = this.config.sendToNumbers || [];
+
+            console.log(`[${this.botId}] Config - onReceive:${activateOnReceive}, onSend:${activateOnSend}`);
 
             let shouldProcess = false;
 
@@ -270,30 +277,35 @@ export class BotInstance {
                 if (receiveFromNumbers.length === 0) {
                     // Accept from anyone
                     shouldProcess = true;
+                    console.log(`[${this.botId}] ✅ Incoming audio - accept from anyone`);
                 } else {
                     // Accept only from specific numbers
                     const normalizedRemote = this.normalizeNumber(remoteNumber);
                     shouldProcess = receiveFromNumbers.some(n =>
                         this.normalizeNumber(n) === normalizedRemote
                     );
+                    console.log(`[${this.botId}] Incoming audio - filter check: ${shouldProcess}`);
                 }
             }
 
-            // Check OUTGOING audio (sent by me)
-            if (isOutgoing && activateOnSend && !isSelfMessage) {
+            // Check OUTGOING audio (sent by me) - includes self-messages
+            if (isOutgoing && activateOnSend) {
                 if (sendToNumbers.length === 0) {
-                    // Process for any recipient
+                    // Process for any recipient (including self)
                     shouldProcess = true;
+                    console.log(`[${this.botId}] ✅ Outgoing audio - accept to anyone`);
                 } else {
                     // Process only for specific recipients
                     const normalizedRemote = this.normalizeNumber(remoteNumber);
                     shouldProcess = sendToNumbers.some(n =>
                         this.normalizeNumber(n) === normalizedRemote
                     );
+                    console.log(`[${this.botId}] Outgoing audio - filter check: ${shouldProcess}`);
                 }
             }
 
             if (shouldProcess) {
+                console.log(`[${this.botId}] Processing audio...`);
                 try {
                     await this.handleAudioMessage(msg, remoteJid, isOutgoing);
                 } catch (error) {
@@ -302,6 +314,8 @@ export class BotInstance {
                         await this.sendMessage(remoteJid, '❌ Erreur de traitement audio.');
                     }
                 }
+            } else {
+                console.log(`[${this.botId}] Audio ignored - no matching activation mode`);
             }
             return;
         }
