@@ -81,12 +81,13 @@ app.get('/api/admin/bots', adminAuth, async (req, res) => {
 });
 
 /**
- * POST /api/admin/bots - Create new bot
+ * POST /api/admin/bots - Create new bot with options
  */
 app.post('/api/admin/bots', adminAuth, async (req, res) => {
     try {
-        const { name, settings } = req.body;
-        const bot = await botManager.createBot(name, settings);
+        const { name, settings, options } = req.body;
+        // options can include: botType, customPrompt, knowledge, welcomeMessage, language
+        const bot = await botManager.createBot(name, settings, options || {});
         res.json(bot);
     } catch (error) {
         res.status(500).json({ error: error.message });

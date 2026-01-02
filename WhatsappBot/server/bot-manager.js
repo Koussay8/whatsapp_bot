@@ -57,11 +57,61 @@ class BotManager {
     }
 
     /**
-     * Créer un nouveau bot
+     * Types de bots prédéfinis avec prompts par défaut
      */
-    async createBot(name, settings = {}) {
+    static BOT_TYPES = {
+        invoice: {
+            name: 'Facturation',
+            prompt: `Tu es un assistant de facturation intelligent.
+Tu analyses les messages vocaux pour extraire:
+- Nom du client
+- Email du client (si mentionné)
+- Description du service/produit
+- Montant en euros
+
+Si des informations manquent, demande-les poliment.
+Quand tout est complet, demande confirmation avant de générer la facture.
+Réponds en français.`,
+        },
+        support: {
+            name: 'Support Client',
+            prompt: `Tu es un assistant de support client professionnel et amical.
+Tu réponds aux questions des clients en utilisant ta base de connaissances.
+Si tu ne connais pas la réponse, propose de transmettre à un humain.
+Sois empathique et orienté solution.
+Réponds en français.`,
+        },
+        appointment: {
+            name: 'Prise de RDV',
+            prompt: `Tu es un assistant de prise de rendez-vous.
+Tu aides les clients à réserver un créneau.
+Collecte: nom, email/téléphone, date souhaitée, motif du RDV.
+Confirme toujours les informations avant de valider.
+Réponds en français.`,
+        },
+        custom: {
+            name: 'Personnalisé',
+            prompt: `Tu es un assistant WhatsApp intelligent.
+Tu aides les utilisateurs avec leurs demandes.
+Sois professionnel et amical.`,
+        },
+    };
+
+    /**
+     * Créer un nouveau bot avec options étendues
+     */
+    async createBot(name, settings = {}, options = {}) {
         const botId = `bot-${uuidv4().split('-')[0]}`;
         const botPath = path.join(DATA_PATH, botId);
+
+        // Extract options
+        const {
+            botType = 'invoice',
+            customPrompt = null,
+            knowledge = [],
+            welcomeMessage = '',
+            language = 'fr',
+        } = options;
 
         // Create directories
         fs.mkdirSync(botPath, { recursive: true });
@@ -69,13 +119,19 @@ class BotManager {
         fs.mkdirSync(path.join(botPath, 'temp'), { recursive: true });
         fs.mkdirSync(path.join(botPath, 'invoices'), { recursive: true });
 
-        // Default config
+        // Get default prompt based on bot type
+        const typeConfig = BotManager.BOT_TYPES[botType] || BotManager.BOT_TYPES.custom;
+
+        // Config
         const config = {
             id: botId,
             name: name || `Bot ${this.bots.size + 1}`,
+            botType: botType,
             status: 'created',
             enabled: false,
             autoStart: false,
+            language: language,
+            welcomeMessage: welcomeMessage,
             createdAt: new Date().toISOString(),
             settings: {
                 groqApiKey: settings.groqApiKey || process.env.GROQ_API_KEY_DEFAULT || '',
@@ -89,22 +145,25 @@ class BotManager {
             },
         };
 
-        // Default prompt
+        // Prompt (custom or type default)
         const prompt = {
-            system: `Tu es un assistant qui aide à créer des factures. 
-Tu analyses les messages vocaux pour extraire:
-- Nom du client
-- Description du service
-- Montant en euros
-
-Sois poli et demande les informations manquantes.`,
+            system: customPrompt || typeConfig.prompt,
+            botType: botType,
+            language: language,
             createdAt: new Date().toISOString(),
+            lastUpdated: new Date().toISOString(),
         };
 
-        // Empty knowledge base
-        const knowledge = {
-            entries: [],
-            lastUpdated: null,
+        // Knowledge base (with initial entries if provided)
+        const knowledgeBase = {
+            entries: Array.isArray(knowledge) ? knowledge.map((item, idx) => ({
+                id: `kb-${idx}`,
+                question: typeof item === 'string' ? item : item.question || '',
+                answer: typeof item === 'string' ? '' : item.answer || '',
+                category: typeof item === 'object' ? item.category || 'general' : 'general',
+                createdAt: new Date().toISOString(),
+            })) : [],
+            lastUpdated: knowledge.length > 0 ? new Date().toISOString() : null,
         };
 
         // Email templates
@@ -128,14 +187,14 @@ Sois poli et demande les informations manquantes.`,
         // Save files
         fs.writeFileSync(path.join(botPath, 'config.json'), JSON.stringify(config, null, 2));
         fs.writeFileSync(path.join(botPath, 'prompt.json'), JSON.stringify(prompt, null, 2));
-        fs.writeFileSync(path.join(botPath, 'knowledge.json'), JSON.stringify(knowledge, null, 2));
+        fs.writeFileSync(path.join(botPath, 'knowledge.json'), JSON.stringify(knowledgeBase, null, 2));
         fs.writeFileSync(path.join(botPath, 'emails.json'), JSON.stringify(emails, null, 2));
 
         // Create instance
         const bot = new BotInstance(botId, config, botPath);
         this.bots.set(botId, bot);
 
-        console.log(`✅ Created bot: ${botId}`);
+        console.log(`✅ Created bot: ${botId} (type: ${botType})`);
         return bot.getStatus();
     }
 
