@@ -1,0 +1,17 @@
+{
+  "id": "bot-b1878e5f",
+  "name": "Bot Test",
+  "status": "created",
+  "enabled": false,
+  "autoStart": false,
+  "createdAt": "2026-01-02T00:01:02.844Z",
+  "settings": {
+    "groqApiKey": "",
+    "companyName": "Entreprise",
+    "companyEmail": "",
+    "invoicePrefix": "FAC-",
+    "emailUser": "",
+    "emailPassword": "",
+    "emailRecipients": []
+  }
+}

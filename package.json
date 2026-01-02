@@ -1,0 +1,29 @@
+{
+  "name": "whatsapp-invoice-bot",
+  "version": "1.0.0",
+  "description": "Bot WhatsApp gratuit - Message vocal → Facture PDF → Email",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "invoice",
+    "whisper",
+    "transcription"
+  ],
+  "author": "NovaSolutions",
+  "license": "MIT",
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.9",
+    "dotenv": "^16.4.5",
+    "groq-sdk": "^0.8.0",
+    "nodemailer": "^6.9.16",
+    "pdfkit": "^0.15.1",
+    "pino": "^9.5.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

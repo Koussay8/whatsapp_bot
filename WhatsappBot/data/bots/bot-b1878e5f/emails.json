@@ -1,0 +1,10 @@
+{
+  "invoice": {
+    "subject": "Facture {invoiceNumber} - {clientName}",
+    "html": "<h1>Facture {invoiceNumber}</h1>\n<p>Client: {clientName}</p>\n<p>Montant: {amount}</p>\n<p>La facture est en pièce jointe.</p>"
+  },
+  "confirmation": {
+    "subject": "✅ Facture {invoiceNumber} créée",
+    "html": "<h1>Confirmation</h1>\n<p>La facture {invoiceNumber} a été créée et envoyée.</p>\n<p>Client: {clientName}</p>\n<p>Montant: {amount}</p>"
+  }
+}

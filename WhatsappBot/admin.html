@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Multi-Bot WhatsApp - Admin</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, sans-serif;
+      background: #0a0a0a;
+      color: white;
+      padding: 2rem;
+    }
+
+    h1 {
+      margin-bottom: 2rem;
+      font-size: 1.8rem;
+    }
+
+    h2 {
+      font-size: 1.2rem;
+      margin-bottom: 1rem;
+    }
+
+    .bots {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .bot {
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+
+    .bot h3 {
+      margin-bottom: 0.5rem;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+    }
+
+    .connected {
+      background: #10b981;
+    }
+
+    .waiting_qr {
+      background: #f59e0b;
+      color: black;
+    }
+
+    .disconnected {
+      background: #ef4444;
+    }
+
+    .connecting {
+      background: #3b82f6;
+    }
+
+    .qr {
+      margin-top: 1rem;
+      text-align: center;
+      background: white;
+      padding: 1rem;
+      border-radius: 8px;
+    }
+
+    .qr img {
+      max-width: 220px;
+      display: block;
+      margin: 0 auto;
+    }
+
+    .qr p {
+      color: #333;
+      margin-top: 0.5rem;
+      font-size: 0.8rem;
+    }
+
+    .btn {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-right: 0.5rem;
+      margin-top: 1rem;
+      font-size: 0.9rem;
+    }
+
+    .btn-start {
+      background: #10b981;
+      color: white;
+    }
+
+    .btn-stop {
+      background: #ef4444;
+      color: white;
+    }
+
+    .create-form {
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .create-form h2 {
+      margin-bottom: 1rem;
+      color: #2563eb;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    .form-row input {
+      flex: 1;
+      padding: 1rem;
+      background: #1a1a1a;
+      border: 2px solid #333;
+      border-radius: 8px;
+      color: white;
+      font-size: 1rem;
+    }
+
+    .form-row input:focus {
+      outline: none;
+      border-color: #2563eb;
+    }
+
+    .form-row button {
+      padding: 1rem 2rem;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .info {
+      background: #1e3a5f;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 2rem;
+    }
+
+    .empty {
+      text-align: center;
+      padding: 3rem;
+      color: #666;
+    }
+
+    .refresh-indicator {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      padding: 0.5rem 1rem;
+      background: #333;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      color: #888;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>🤖 Multi-Bot WhatsApp</h1>
+
+  <div class="info">
+    <strong>Comment ça marche :</strong><br>
+    1. Créer un bot → 2. Cliquer "Démarrer" → 3. Scanner le QR avec WhatsApp → 4. Activer le bot
+  </div>
+
+  <div class="create-form">
+    <h2>➕ Créer un nouveau bot</h2>
+    <div class="form-row">
+      <input type="text" id="botName" placeholder="Nom du bot (ex: Bot Client A)">
+      <button onclick="createBot()">Créer</button>
+    </div>
+  </div>
+
+  <h2>📋 Mes Bots</h2>
+  <div class="bots" id="botsList">
+    <div class="empty">Chargement...</div>
+  </div>
+
+  <div class="refresh-indicator" id="refreshIndicator">⏱ --</div>
+
+  <script>
+    const API = 'http://localhost:3001';
+    const SECRET = 'admin';
+
+    // Cache pour éviter le scintillement
+    let lastBotsData = null;
+    let qrCache = {};
+
+    async function fetchBots() {
+      try {
+        const res = await fetch(`${API}/api/admin/bots`, {
+          headers: { Authorization: `Bearer ${SECRET}` }
+        });
+        const data = await res.json();
+        const bots = data.bots || [];
+
+        // Comparer avec les données précédentes
+        const newData = JSON.stringify(bots);
+        if (newData !== lastBotsData) {
+          lastBotsData = newData;
+          await renderBots(bots);
+        } else {
+          // Juste mettre à jour les QR codes si nécessaire
+          await updateQRCodes(bots);
+        }
+      } catch (e) {
+        document.getElementById('botsList').innerHTML = '<p style="color:red">❌ Serveur non accessible. Lance "npm run dev"</p>';
+      }
+    }
+
+    async function updateQRCodes(bots) {
+      for (const bot of bots) {
+        if (bot.status === 'waiting_qr' || bot.hasQR) {
+          const qrImg = document.getElementById(`qr-${bot.id}`);
+          if (qrImg) {
+            const qr = await getQR(bot.id);
+            if (qr && qr !== qrCache[bot.id]) {
+              qrCache[bot.id] = qr;
+              qrImg.src = qr;
+            }
+          }
+        }
+      }
+    }
+
+    async function createBot() {
+      const input = document.getElementById('botName');
+      const name = input.value.trim();
+      if (!name) { input.focus(); return; }
+
+      await fetch(`${API}/api/admin/bots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SECRET}` },
+        body: JSON.stringify({ name })
+      });
+
+      input.value = '';
+      lastBotsData = null; // Force refresh
+      fetchBots();
+    }
+
+    document.getElementById('botName').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') createBot();
+    });
+
+    async function startBot(id) {
+      await fetch(`${API}/api/admin/bots/${id}/start`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${SECRET}` }
+      });
+      lastBotsData = null;
+      fetchBots();
+    }
+
+    async function stopBot(id) {
+      await fetch(`${API}/api/admin/bots/${id}/stop`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${SECRET}` }
+      });
+      lastBotsData = null;
+      fetchBots();
+    }
+
+    async function toggleBot(id, enabled) {
+      await fetch(`${API}/api/admin/bots/${id}/enable`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SECRET}` },
+        body: JSON.stringify({ enabled: !enabled })
+      });
+      lastBotsData = null;
+      fetchBots();
+    }
+
+    async function deleteBot(id) {
+      if (!confirm('Supprimer ce bot ?')) return;
+      await fetch(`${API}/api/admin/bots/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${SECRET}` }
+      });
+      lastBotsData = null;
+      fetchBots();
+    }
+
+    async function getQR(id) {
+      try {
+        const res = await fetch(`${API}/api/bots/${id}/qr`);
+        const data = await res.json();
+        return data.qrCode || null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function renderBots(bots) {
+      const container = document.getElementById('botsList');
+
+      if (bots.length === 0) {
+        container.innerHTML = '<div class="empty">Aucun bot. Crée ton premier bot ci-dessus ☝️</div>';
+        return;
+      }
+
+      let html = '';
+
+      for (const bot of bots) {
+        let qrHtml = '';
+        if (bot.status === 'waiting_qr' || bot.hasQR) {
+          const qr = await getQR(bot.id);
+          if (qr) {
+            qrCache[bot.id] = qr;
+            qrHtml = `
+              <div class="qr">
+                <img id="qr-${bot.id}" src="${qr}" alt="QR Code">
+                <p>📱 Scanne avec WhatsApp > Appareils connectés</p>
+              </div>`;
+          }
+        }
+
+        const buttons = bot.status === 'disconnected' || bot.status === 'created' || bot.status === 'logged_out'
+          ? `<button class="btn btn-start" onclick="startBot('${bot.id}')">▶ Démarrer</button>`
+          : `<button class="btn btn-stop" onclick="stopBot('${bot.id}')">⏹ Arrêter</button>`;
+
+        html += `
+          <div class="bot">
+            <h3>${bot.name || bot.id}</h3>
+            <span class="status ${bot.status}">${bot.status}</span>
+            ${bot.phoneNumber ? `<p style="color:#888;margin-top:0.5rem">📱 ${bot.phoneNumber}</p>` : ''}
+            ${bot.enabled
+            ? '<p style="color:#10b981;margin-top:0.5rem">✅ Activé</p>'
+            : '<p style="color:#888;margin-top:0.5rem">⏸ Désactivé</p>'}
+            ${qrHtml}
+            <div>
+              ${buttons}
+              <button class="btn" style="background:#444" onclick="toggleBot('${bot.id}', ${bot.enabled})">
+                ${bot.enabled ? '⏸ Désactiver' : '▶ Activer'}
+              </button>
+              <button class="btn" style="background:#333" onclick="deleteBot('${bot.id}')">🗑</button>
+            </div>
+          </div>`;
+      }
+
+      container.innerHTML = html;
+    }
+
+    // Compteur de rafraîchissement
+    let countdown = 5;
+    function updateCountdown() {
+      document.getElementById('refreshIndicator').textContent = `⏱ ${countdown}s`;
+      countdown--;
+      if (countdown < 0) {
+        countdown = 5;
+        fetchBots();
+      }
+    }
+
+    // Démarrage
+    fetchBots();
+    setInterval(updateCountdown, 1000);
+  </script>
+</body>
+
+</html>
