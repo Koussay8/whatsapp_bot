@@ -303,6 +303,13 @@ Sois professionnel et amical.`,
             ...bot.getStatus(),
             ownerEmail: bot.config.ownerEmail || null,
             botType: bot.config.botType || 'invoice',
+            // Activation modes
+            activateOnReceive: bot.config.activateOnReceive ?? true,
+            activateOnSend: bot.config.activateOnSend ?? false,
+            receiveFromNumbers: bot.config.receiveFromNumbers || [],
+            sendToNumbers: bot.config.sendToNumbers || [],
+            // Custom prompt
+            customPrompt: bot.config.customPrompt || null,
         }));
     }
 
